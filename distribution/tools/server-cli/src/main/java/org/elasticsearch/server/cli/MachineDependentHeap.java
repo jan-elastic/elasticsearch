@@ -9,6 +9,9 @@
 
 package org.elasticsearch.server.cli;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.elasticsearch.cli.Terminal;
 import org.elasticsearch.cluster.node.DiscoveryNodeRole;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.FeatureFlag;
@@ -40,7 +43,19 @@ public class MachineDependentHeap {
 
     private static final FeatureFlag NEW_ML_MEMORY_COMPUTATION_FEATURE_FLAG = new FeatureFlag("new_ml_memory_computation");
 
-    public MachineDependentHeap() {}
+    private static final Logger logger = LogManager.getLogger(MachineDependentHeap.class);
+
+    private final Terminal terminal;
+
+    private boolean useNewMlMemoryComputation = false;
+
+    public MachineDependentHeap() {
+        this.terminal = null;
+    }
+
+    public MachineDependentHeap(Terminal terminal) {
+        this.terminal = terminal;
+    }
 
     /**
      * Calculate heap options.
@@ -55,8 +70,30 @@ public class MachineDependentHeap {
         SystemMemoryInfo systemMemoryInfo,
         List<String> userDefinedJvmOptions
     ) throws IOException, InterruptedException {
+        if (userDefinedJvmOptions.contains("-Des.new_ml_memory_computation_feature_flag_enabled=true")
+                || NEW_ML_MEMORY_COMPUTATION_FEATURE_FLAG.isEnabled()) {
+            useNewMlMemoryComputation = true;
+        }
         // TODO: this could be more efficient, to only parse final options once
         final Map<String, JvmOption> finalJvmOptions = JvmOption.findFinalOptions(userDefinedJvmOptions);
+        if (terminal != null) {
+            terminal.println("@@@ contains -Des.new_ml_memory_computation_feature_flag_enabled=true --> "
+                + userDefinedJvmOptions.contains("-Des.new_ml_memory_computation_feature_flag_enabled=true"));
+            terminal.println("@@@ contains -Des.inference_default_elser_feature_flag_enabled=true --> "
+                + userDefinedJvmOptions.contains("-Des.inference_default_elser_feature_flag_enabled=true"));
+            terminal.println("@@@ MachineDependentHeap userDefinedJvmOptions: " + userDefinedJvmOptions);
+
+            terminal.println(
+                "@@@ MachineDependentHeap determineHeapSettings: MaxHeap="
+                    + finalJvmOptions.get("MaxHeapSize")
+                    + " FeatureFlag="
+                    + NEW_ML_MEMORY_COMPUTATION_FEATURE_FLAG.isEnabled()
+            );
+            terminal.println("@@@  MachineDependentHeap determineHeapSettings: inference_default_elser_feature_flag="
+                + new FeatureFlag("inference_default_elser").isEnabled());
+            terminal.println("@@@ USER DEFINED OPTIONS = " + userDefinedJvmOptions);
+            terminal.println("@@@ FINAL OPTIONS = " + finalJvmOptions);
+        }
         if (isMaxHeapSpecified(finalJvmOptions) || isMinHeapSpecified(finalJvmOptions) || isInitialHeapSpecified(finalJvmOptions)) {
             // User has explicitly set memory settings so we use those
             return Collections.emptyList();
@@ -65,6 +102,12 @@ public class MachineDependentHeap {
         List<DiscoveryNodeRole> roles = NodeRoleSettings.NODE_ROLES_SETTING.get(nodeSettings);
         long availableSystemMemory = systemMemoryInfo.availableSystemMemory();
         MachineNodeRole nodeRole = mapNodeRole(roles);
+        if (terminal != null) {
+            terminal.println(
+                "@@@ MachineDependentHeap determineHeapSettings: setMaxHeap: "
+                    + getHeapSizeMb(nodeSettings, nodeRole, availableSystemMemory)
+            );
+        }
         return options(getHeapSizeMb(nodeSettings, nodeRole, availableSystemMemory));
     }
 
@@ -107,7 +150,7 @@ public class MachineDependentHeap {
             case ML_ONLY -> {
                 double heapFractionBelow16GB = 0.4;
                 double heapFractionAbove16GB = 0.1;
-                if (NEW_ML_MEMORY_COMPUTATION_FEATURE_FLAG.isEnabled()) {
+                if (useNewMlMemoryComputation) {
                     heapFractionBelow16GB = 0.4 / (1.0 + JvmErgonomics.DIRECT_MEMORY_TO_HEAP_FACTOR);
                     heapFractionAbove16GB = 0.1 / (1.0 + JvmErgonomics.DIRECT_MEMORY_TO_HEAP_FACTOR);
                 }

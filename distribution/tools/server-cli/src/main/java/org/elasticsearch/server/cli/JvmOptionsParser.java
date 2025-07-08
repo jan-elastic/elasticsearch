@@ -9,6 +9,8 @@
 
 package org.elasticsearch.server.cli;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.bootstrap.ServerArgs;
 import org.elasticsearch.cli.ExitCodes;
 import org.elasticsearch.cli.ProcessInfo;
@@ -42,6 +44,8 @@ import java.util.stream.StreamSupport;
  * Parses JVM options from a file and prints a single line with all JVM options to standard output.
  */
 public final class JvmOptionsParser {
+
+    private static final Logger logger = LogManager.getLogger(JvmOptionsParser.class);
 
     static class JvmOptionsFileParserException extends Exception {
 
@@ -176,6 +180,8 @@ public final class JvmOptionsParser {
         final List<String> jvmOptions = new ArrayList<>();
 
         for (final Path jvmOptionsFile : jvmOptionsFiles) {
+            logger.info("READING FILE: " + jvmOptionsFile);
+
             final SortedMap<Integer, String> invalidLines = new TreeMap<>();
             try (
                 InputStream is = Files.newInputStream(jvmOptionsFile);
@@ -186,6 +192,11 @@ public final class JvmOptionsParser {
             }
             if (invalidLines.isEmpty() == false) {
                 throw new JvmOptionsFileParserException(jvmOptionsFile, invalidLines);
+            }
+            for (String option : jvmOptions) {
+                if (option.contains("feature_flag")) {
+                    logger.info("FOUND OPTIONS: {}", option);
+                }
             }
         }
         return jvmOptions;

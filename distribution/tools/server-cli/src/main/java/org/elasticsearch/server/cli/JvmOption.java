@@ -9,6 +9,8 @@
 
 package org.elasticsearch.server.cli;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.core.SuppressForbidden;
 
@@ -33,6 +35,8 @@ class JvmOption {
     private final String value;
     private final String origin;
 
+    private static final Logger logger = LogManager.getLogger(JvmOption.class);
+
     JvmOption(String value, String origin) {
         if (origin == null) {
             throw new IllegalStateException(Strings.format("""
@@ -41,6 +45,11 @@ class JvmOption {
         }
         this.value = value;
         this.origin = origin;
+    }
+
+    @Override
+    public String toString() {
+        return "{value=" + value + ", origin=" + origin + "}";
     }
 
     public Optional<String> getValue() {
@@ -124,6 +133,11 @@ class JvmOption {
             );
             throw new RuntimeException(message);
         } else {
+            for (String line : output) {
+                if (line.contains("MaxHeapSize")) {
+                    logger.info("@@@ JvmOption flagsFinal: {}", line);
+                }
+            }
             return output;
         }
     }
