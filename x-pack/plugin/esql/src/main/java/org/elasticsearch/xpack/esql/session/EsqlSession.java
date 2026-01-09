@@ -50,6 +50,7 @@ import org.elasticsearch.xpack.esql.analysis.EnrichResolution;
 import org.elasticsearch.xpack.esql.analysis.PreAnalyzer;
 import org.elasticsearch.xpack.esql.analysis.Verifier;
 import org.elasticsearch.xpack.esql.approximate.Approximate;
+import org.elasticsearch.xpack.esql.approximate.ApproximateSettings;
 import org.elasticsearch.xpack.esql.core.expression.Attribute;
 import org.elasticsearch.xpack.esql.core.expression.FoldContext;
 import org.elasticsearch.xpack.esql.core.expression.ReferenceAttribute;
@@ -226,7 +227,7 @@ public class EsqlSession {
         ZoneId timeZone = request.timeZone() == null
             ? statement.setting(QuerySettings.TIME_ZONE)
             : statement.settingOrDefault(QuerySettings.TIME_ZONE, request.timeZone());
-        Map<String, Object> approximationSettings = statement.setting(QuerySettings.APPROXIMATE);
+        ApproximateSettings approximationSettings = statement.setting(QuerySettings.APPROXIMATE);
 
         Configuration configuration = new Configuration(
             timeZone,
