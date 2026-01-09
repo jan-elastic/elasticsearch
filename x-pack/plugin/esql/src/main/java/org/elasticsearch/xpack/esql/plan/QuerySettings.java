@@ -10,7 +10,7 @@ package org.elasticsearch.xpack.esql.plan;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.xpack.esql.action.EsqlCapabilities;
 import org.elasticsearch.xpack.esql.analysis.UnmappedResolution;
-import org.elasticsearch.xpack.esql.approximate.ApproximateSettings;
+import org.elasticsearch.xpack.esql.approximation.ApproximationSettings;
 import org.elasticsearch.xpack.esql.core.expression.Expression;
 import org.elasticsearch.xpack.esql.core.type.DataType;
 import org.elasticsearch.xpack.esql.expression.Foldables;
@@ -112,13 +112,13 @@ public class QuerySettings {
             @MapParam.MapParamEntry(name = "confidence_level", type = { "double" }, description = "Confidence level.") }
     )
     @SuppressWarnings("unchecked")
-    public static final QuerySettingDef<ApproximateSettings> APPROXIMATE = new QuerySettingDef<>(
-        "approximate",
+    public static final QuerySettingDef<ApproximationSettings> APPROXIMATION = new QuerySettingDef<>(
+        "approximation",
         null,
         false,
         false,
         true,
-        ApproximateSettings::parse,
+        ApproximationSettings::parse,
         null
     );
 
@@ -126,7 +126,7 @@ public class QuerySettings {
         UNMAPPED_FIELDS,
         PROJECT_ROUTING,
         TIME_ZONE,
-        APPROXIMATE
+        APPROXIMATION
     ).collect(Collectors.toMap(QuerySettingDef::name, Function.identity()));
 
     public static void validate(EsqlStatement statement, SettingsValidationContext ctx) {
