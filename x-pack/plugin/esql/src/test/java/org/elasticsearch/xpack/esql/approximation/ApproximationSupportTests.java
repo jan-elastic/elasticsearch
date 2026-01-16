@@ -1,0 +1,280 @@
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the Elastic License
+ * 2.0; you may not use this file except in compliance with the Elastic License
+ * 2.0.
+ */
+
+package org.elasticsearch.xpack.esql.approximation;
+
+import org.elasticsearch.common.util.set.Sets;
+import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Absent;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.AbsentOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.AggregateFunction;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.AllFirst;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.AllLast;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.AvgOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.AvgSerializationTests;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.CountDistinct;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.CountDistinctOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.CountOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.DefaultTimeSeriesAggregateFunction;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Delta;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Deriv;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.DimensionValues;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.First;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.FirstDocId;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.FirstOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.HistogramMerge;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.HistogramMergeOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Idelta;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Increase;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Irate;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Last;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.LastOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Max;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.MaxOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Min;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.MinOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.NumericAggregate;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.PercentileOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Present;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.PresentOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Rate;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.SpatialAggregateFunction;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.SpatialCentroid;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.SpatialExtent;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.StddevOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.SumOverTime;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.SumSerializationTests;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.TimeSeriesAggregateFunction;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Top;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.Values;
+import org.elasticsearch.xpack.esql.expression.function.aggregate.VarianceOverTime;
+import org.elasticsearch.xpack.esql.plan.logical.BinaryPlan;
+import org.elasticsearch.xpack.esql.plan.logical.Explain;
+import org.elasticsearch.xpack.esql.plan.logical.Fork;
+import org.elasticsearch.xpack.esql.plan.logical.InlineStats;
+import org.elasticsearch.xpack.esql.plan.logical.LeafPlan;
+import org.elasticsearch.xpack.esql.plan.logical.LogicalPlan;
+import org.elasticsearch.xpack.esql.plan.logical.Lookup;
+import org.elasticsearch.xpack.esql.plan.logical.Subquery;
+import org.elasticsearch.xpack.esql.plan.logical.TimeSeriesAggregate;
+import org.elasticsearch.xpack.esql.plan.logical.UnaryPlan;
+import org.elasticsearch.xpack.esql.plan.logical.UnionAll;
+import org.elasticsearch.xpack.esql.plan.logical.UnresolvedRelation;
+import org.elasticsearch.xpack.esql.plan.logical.fuse.Fuse;
+import org.elasticsearch.xpack.esql.plan.logical.fuse.FuseScoreEval;
+import org.elasticsearch.xpack.esql.plan.logical.inference.InferencePlan;
+import org.elasticsearch.xpack.esql.plan.logical.join.InlineJoin;
+import org.elasticsearch.xpack.esql.plan.logical.join.Join;
+import org.elasticsearch.xpack.esql.plan.logical.join.LookupJoin;
+import org.elasticsearch.xpack.esql.plan.logical.join.StubRelation;
+import org.elasticsearch.xpack.esql.plan.logical.local.LocalRelation;
+import org.elasticsearch.xpack.esql.plan.logical.promql.AcrossSeriesAggregate;
+import org.elasticsearch.xpack.esql.plan.logical.promql.PlaceholderRelation;
+import org.elasticsearch.xpack.esql.plan.logical.promql.PromqlCommand;
+import org.elasticsearch.xpack.esql.plan.logical.promql.PromqlFunctionCall;
+import org.elasticsearch.xpack.esql.plan.logical.promql.WithinSeriesAggregate;
+import org.elasticsearch.xpack.esql.plan.logical.promql.operator.VectorBinaryArithmetic;
+import org.elasticsearch.xpack.esql.plan.logical.promql.operator.VectorBinaryComparison;
+import org.elasticsearch.xpack.esql.plan.logical.promql.operator.VectorBinaryOperator;
+import org.elasticsearch.xpack.esql.plan.logical.promql.operator.VectorBinarySet;
+import org.elasticsearch.xpack.esql.plan.logical.promql.selector.InstantSelector;
+import org.elasticsearch.xpack.esql.plan.logical.promql.selector.LiteralSelector;
+import org.elasticsearch.xpack.esql.plan.logical.promql.selector.RangeSelector;
+import org.elasticsearch.xpack.esql.plan.logical.promql.selector.Selector;
+import org.elasticsearch.xpack.esql.plan.logical.show.ShowInfo;
+
+import java.io.File;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.Set;
+
+import static org.hamcrest.Matchers.empty;
+
+/**
+ * The tests verify that each LogicalPlan class is either explicitly supported for approximation
+ * (by being on the whitelist {@link Approximation#SUPPORTED_COMMANDS}) or explicitly not supported
+ * (by being on the blacklist {@link ApproximationSupportTests#UNSUPPORTED_COMMANDS}).
+ * This forces a conscious decision about whether each LogicalPlan class supports approximation
+ * whenever a new command is added.
+ */
+public class ApproximationSupportTests extends ESTestCase {
+
+    private static final Set<Class<? extends LogicalPlan>> UNSUPPORTED_COMMANDS = Set.of(
+        // TODO: investigate whether these plans are supported or explain why not
+        Fuse.class,
+        FuseScoreEval.class,
+        Lookup.class,
+        Subquery.class,
+
+        // Non-unary plans are not supported yet.
+        // These require more complicated expression tree traversal.
+        Fork.class,
+        UnionAll.class,
+        Join.class,
+        InlineJoin.class,
+        LookupJoin.class,
+
+        // InlineStats is not supported yet.
+        // Only a single Stats command is supported.
+        InlineStats.class,
+
+        // Timeseries indices are not supported yet.
+        // They require chained Stats commands.
+        TimeSeriesAggregate.class,
+
+        // These source commands makes no sense for approximation.
+        Explain.class,
+        ShowInfo.class,
+        LocalRelation.class,
+
+        // The plans are superclasses of other plans.
+        LogicalPlan.class,
+        LeafPlan.class,
+        UnaryPlan.class,
+        BinaryPlan.class,
+        InferencePlan.class,
+
+        // These plans don't occur in a correct query.
+        UnresolvedRelation.class,
+        StubRelation.class,
+
+        // PromQL plans are not supported yet.
+        PromqlCommand.class,
+        LiteralSelector.class,
+        Selector.class,
+        InstantSelector.class,
+        RangeSelector.class,
+        PromqlFunctionCall.class,
+        WithinSeriesAggregate.class,
+        AcrossSeriesAggregate.class,
+        PlaceholderRelation.class,
+        VectorBinarySet.class,
+        VectorBinaryArithmetic.class,
+        VectorBinaryComparison.class,
+        VectorBinaryOperator.class
+    );
+
+    private static final Set<Class<? extends AggregateFunction>> UNSUPPORTED_AGGS = Set.of(
+        // TODO: investigate whether these aggs are supported or explain why not
+        HistogramMerge.class,
+
+        // Counting distinct values is hard to approximate.
+        CountDistinct.class,
+
+        // Aggs that produce minimums or maximums, firsts or lasts, presence or absence
+        // don't behave well under approximation (bad convergence under CLT).
+        AllFirst.class,
+        AllLast.class,
+        FirstDocId.class,
+        First.class,
+        Last.class,
+        Max.class,
+        Min.class,
+        Absent.class,
+        Present.class,
+        Top.class,
+
+        // Spatial aggs are not supported for approximation.
+        SpatialExtent.class,
+        SpatialCentroid.class,
+
+        // These multi-valued aggs are not suitable for approximation.
+        DimensionValues.class,
+        Values.class,
+
+        // These aggs are superclasses of other aggs.
+        AggregateFunction.class,
+        NumericAggregate.class,
+        TimeSeriesAggregateFunction.class,
+        SpatialAggregateFunction.class,
+
+        // These aggs don't occur in a correct query.
+        SumSerializationTests.OldSum.class,
+        AvgSerializationTests.OldAvg.class,
+
+        // Time series aggregates are not supported yet.
+        AbsentOverTime.class,
+        AvgOverTime.class,
+        CountDistinctOverTime.class,
+        CountOverTime.class,
+        DefaultTimeSeriesAggregateFunction.class,
+        Delta.class,
+        Deriv.class,
+        FirstOverTime.class,
+        Idelta.class,
+        Increase.class,
+        Irate.class,
+        HistogramMergeOverTime.class,
+        LastOverTime.class,
+        MaxOverTime.class,
+        MinOverTime.class,
+        PercentileOverTime.class,
+        PresentOverTime.class,
+        Rate.class,
+        StddevOverTime.class,
+        SumOverTime.class,
+        VarianceOverTime.class
+    );
+
+    private static List<Class<?>> getClassesInPackage(String packageName) throws Exception {
+        List<Class<?>> classes = new ArrayList<>();
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        String path = packageName.replace('.', '/');
+
+        // Get all directory paths for this package
+        Enumeration<URL> resources = loader.getResources(path);
+        while (resources.hasMoreElements()) {
+            File directory = new File(resources.nextElement().getFile());
+            if (directory.exists()) {
+                scan(directory, packageName, classes);
+            }
+        }
+        return classes;
+    }
+
+    private static void scan(File directory, String pkg, List<Class<?>> classes) throws Exception {
+        for (File file : directory.listFiles()) {
+            if (file.isDirectory()) {
+                scan(file, pkg + "." + file.getName(), classes);
+            } else if (file.getName().endsWith(".class")) {
+                classes.add(Class.forName(pkg + "." + file.getName().replace(".class", "")));
+            }
+        }
+    }
+
+    public void testAllCommandsWhitelistedOrBlacklisted() throws Exception {
+        assertThat(Sets.intersection(Approximation.SUPPORTED_COMMANDS, UNSUPPORTED_COMMANDS), empty());
+
+        getClassesInPackage("org.elasticsearch.xpack.esql.plan.logical").stream()
+            .filter(LogicalPlan.class::isAssignableFrom)
+            .forEach(
+                clazz -> assertTrue(
+                    "LogicalPlan " + clazz.getName() + " must be either supported or explicitly unsupported for approximation",
+                    Approximation.SUPPORTED_COMMANDS.contains(clazz) || UNSUPPORTED_COMMANDS.contains(clazz)
+                )
+            );
+    }
+
+    public void testAllAggregationsWhitelistedOrBlacklisted() throws Exception {
+        assertThat(Sets.intersection(Approximation.SUPPORTED_SINGLE_VALUED_AGGS, UNSUPPORTED_AGGS), empty());
+        assertThat(Sets.intersection(Approximation.SUPPORTED_MULTIVALUED_AGGS, UNSUPPORTED_AGGS), empty());
+        assertThat(Sets.intersection(Approximation.SUPPORTED_SINGLE_VALUED_AGGS, Approximation.SUPPORTED_MULTIVALUED_AGGS), empty());
+
+        getClassesInPackage("org.elasticsearch.xpack.esql.expression.function.aggregate").stream()
+            .filter(AggregateFunction.class::isAssignableFrom)
+            .forEach(
+                clazz -> assertTrue(
+                    "AggregateFunction " + clazz.getName() + " must be either supported or explicitly unsupported for approximation",
+                    Approximation.SUPPORTED_SINGLE_VALUED_AGGS.contains(clazz)
+                        || Approximation.SUPPORTED_MULTIVALUED_AGGS.contains(clazz)
+                        || UNSUPPORTED_AGGS.contains(clazz)
+                )
+            );
+    }
+}
