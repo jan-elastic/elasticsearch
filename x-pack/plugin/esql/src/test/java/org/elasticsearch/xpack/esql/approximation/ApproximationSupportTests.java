@@ -91,17 +91,20 @@ import java.io.File;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.equalTo;
 
 /**
- * The tests verify that each LogicalPlan class is either explicitly supported for approximation
- * (by being on the whitelist {@link Approximation#SUPPORTED_COMMANDS}) or explicitly not supported
- * (by being on the blacklist {@link ApproximationSupportTests#UNSUPPORTED_COMMANDS}).
- * This forces a conscious decision about whether each LogicalPlan class supports approximation
- * whenever a new command is added.
+ * These tests verify that each LogicalPlan and AggregateFunction is either explicitly
+ * supported for approximation (by being on a whitelist in {@link Approximation}) or
+ * explicitly not supported (by being on a blacklist here).
+ * This forces a conscious decision about whether LogicalPlans and AggregateFunctions
+ * are supported for approximation or not.
  */
 public class ApproximationSupportTests extends ESTestCase {
 
@@ -249,32 +252,29 @@ public class ApproximationSupportTests extends ESTestCase {
     }
 
     public void testAllCommandsWhitelistedOrBlacklisted() throws Exception {
-        assertThat(Sets.intersection(Approximation.SUPPORTED_COMMANDS, UNSUPPORTED_COMMANDS), empty());
-
-        getClassesInPackage("org.elasticsearch.xpack.esql.plan.logical").stream()
-            .filter(LogicalPlan.class::isAssignableFrom)
-            .forEach(
-                clazz -> assertTrue(
-                    "LogicalPlan " + clazz.getName() + " must be either supported or explicitly unsupported for approximation",
-                    Approximation.SUPPORTED_COMMANDS.contains(clazz) || UNSUPPORTED_COMMANDS.contains(clazz)
-                )
-            );
+        testAllClassesListed(LogicalPlan.class, List.of(Approximation.SUPPORTED_COMMANDS, UNSUPPORTED_COMMANDS));
     }
 
     public void testAllAggregationsWhitelistedOrBlacklisted() throws Exception {
-        assertThat(Sets.intersection(Approximation.SUPPORTED_SINGLE_VALUED_AGGS, UNSUPPORTED_AGGS), empty());
-        assertThat(Sets.intersection(Approximation.SUPPORTED_MULTIVALUED_AGGS, UNSUPPORTED_AGGS), empty());
-        assertThat(Sets.intersection(Approximation.SUPPORTED_SINGLE_VALUED_AGGS, Approximation.SUPPORTED_MULTIVALUED_AGGS), empty());
+        testAllClassesListed(
+            AggregateFunction.class,
+            List.of(Approximation.SUPPORTED_SINGLE_VALUED_AGGS, Approximation.SUPPORTED_MULTIVALUED_AGGS, UNSUPPORTED_AGGS)
+        );
+    }
 
-        getClassesInPackage("org.elasticsearch.xpack.esql.expression.function.aggregate").stream()
-            .filter(AggregateFunction.class::isAssignableFrom)
-            .forEach(
-                clazz -> assertTrue(
-                    "AggregateFunction " + clazz.getName() + " must be either supported or explicitly unsupported for approximation",
-                    Approximation.SUPPORTED_SINGLE_VALUED_AGGS.contains(clazz)
-                        || Approximation.SUPPORTED_MULTIVALUED_AGGS.contains(clazz)
-                        || UNSUPPORTED_AGGS.contains(clazz)
-                )
-            );
+    /**
+     * Extracts all classes that are subclasses of the given class from the classpath, and
+     * verifies that all of them are included in exactly one of the given sets of classes.
+     */
+    private <T> void testAllClassesListed(Class<T> clazz, List<Set<Class<? extends T>>> listedClasses) throws Exception {
+        Set<Class<? extends T>> allListedClasses = new HashSet<>();
+        for (Set<Class<? extends T>> list : listedClasses) {
+            assertThat(Sets.intersection(allListedClasses, list), empty());
+            allListedClasses.addAll(list);
+        }
+        Set<Class<?>> classesOnClassPath = getClassesInPackage(clazz.getPackageName()).stream()
+            .filter(clazz::isAssignableFrom)
+            .collect(Collectors.toSet());
+        assertThat(classesOnClassPath, equalTo(allListedClasses));
     }
 }
