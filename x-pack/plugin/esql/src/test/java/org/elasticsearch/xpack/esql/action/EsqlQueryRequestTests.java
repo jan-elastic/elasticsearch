@@ -66,6 +66,8 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 
 public class EsqlQueryRequestTests extends ESTestCase {
 
@@ -909,6 +911,7 @@ public class EsqlQueryRequestTests extends ESTestCase {
             }""";
         EsqlQueryRequest request = parseEsqlQueryRequest(json, randomBoolean());
         assertThat(request.approximation(), equalTo(ApproximationSettings.ENABLED));
+        assertThat(request.approximation().confidenceLevel(), equalTo(0.90));
     }
 
     public void testApproximationFalse() throws IOException {
@@ -976,6 +979,19 @@ public class EsqlQueryRequestTests extends ESTestCase {
         Exception e = expectThrows(XContentParseException.class, () -> parseEsqlQueryRequest(json, randomBoolean()));
         assertThat(e.getMessage(), containsString("approximation"));
         assertThat(e.getCause().getCause().getMessage(), containsString("[rows] must be at least 10000"));
+    }
+
+    public void testApproximationNullConfidenceLevel() throws IOException {
+        String json = """
+            {
+                "query": "FROM test | STATS count()",
+                "approximation": {
+                    "confidence_level": null
+                }
+            }""";
+        EsqlQueryRequest request = parseEsqlQueryRequest(json, randomBoolean());
+        assertThat(request.approximation(), not(nullValue()));
+        assertThat(request.approximation().confidenceLevel(), nullValue());
     }
 
     public void testApproximationInvalidConfidenceLevel() {
