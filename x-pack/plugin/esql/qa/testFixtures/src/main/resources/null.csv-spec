@@ -266,7 +266,6 @@ result:boolean
 null
 ;
 
-
 # null > integer evaluates to null
 rowNullGreaterThanInteger
 required_capability: fix_null_comparison_type_check
@@ -813,6 +812,64 @@ COUNT_DISTINCT(c):long|COUNT_DISTINCT(null):long|COUNT_DISTINCT(null - 1):long|a
 0                     |0                        |0                            |1
 0                     |0                        |0                            |2
 0                     |0                        |0                            |3
+;
+
+nullLiteralArgAcrossAggs
+required_capability: fix_agg_on_null_by_replacing_with_eval
+
+ROW x = 1
+| STATS
+    sd = STD_DEV(null),
+    v = VARIANCE(null),
+    mad = MEDIAN_ABSOLUTE_DEVIATION(null),
+    md = MEDIAN(null),
+    p = PERCENTILE(null, 50),
+    w = WEIGHTED_AVG(null, 2),
+    vs = VALUES(null),
+    sm = SAMPLE(null, 1),
+    t = TOP(null, 3, "asc")
+;
+
+sd:double | v:double | mad:double | md:double | p:double | w:double | vs:null | sm:null | t:null
+null      | null     | null       | null      | null     | null     | null    | null    | null
+;
+
+nullColumnArgAcrossAggs
+required_capability: fix_agg_on_null_by_replacing_with_eval
+
+FROM employees
+| EVAL x = emp_no + NULL
+| STATS
+    a = AVG(x),
+    ma = MAX(x),
+    mi = MIN(x),
+    sd = STD_DEV(x),
+    mad = MEDIAN_ABSOLUTE_DEVIATION(x),
+    w = WEIGHTED_AVG(x, 2),
+    sm = SAMPLE(x, 5),
+    t = TOP(x, 3, "desc"),
+    f = FIRST(x, emp_no),
+    l = LAST(x, emp_no),
+    c = COUNT(x),
+    cd = COUNT_DISTINCT(x),
+    pr = PRESENT(x),
+    ab = ABSENT(x)
+;
+
+a:double | ma:null | mi:null | sd:double | mad:double | w:double | sm:null | t:null | f:null | l:null | c:long | cd:long | pr:boolean | ab:boolean
+null     | null    | null    | null      | null       | null     | null    | null   | null   | null   | 0      | 0       | false      | true
+;
+
+topNullOutputFieldArg
+required_capability: fix_aggs_multiple_input_fields
+
+FROM employees
+| EVAL x = NULL
+| STATS byLiteral = TOP(salary, 3, "asc", null), byColumn = TOP(salary, 3, "asc", x)
+;
+
+byLiteral:null | byColumn:null
+null           | null
 ;
 
 // Tests for fix: (a IS NOT NULL OR p) AND a IS NULL must not discard the surviving OR branch p.
